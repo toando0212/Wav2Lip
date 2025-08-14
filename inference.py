@@ -11,7 +11,7 @@ import platform
 parser = argparse.ArgumentParser(description='Inference code to lip-sync videos in the wild using Wav2Lip models')
 
 parser.add_argument('--checkpoint_path', type=str, 
-					help='Name of saved checkpoint to load weights from', required=True)
+					help='Name of saved checkpoint to load weights from', required=False, default='best.pt')
 
 parser.add_argument('--face', type=str, 
 					help='Filepath of video/image that contains faces to use', required=True)
@@ -158,12 +158,22 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 print('Using {} for inference.'.format(device))
 
 def _load(checkpoint_path):
-	if device == 'cuda':
-		checkpoint = torch.load(checkpoint_path)
-	else:
-		checkpoint = torch.load(checkpoint_path,
-								map_location=lambda storage, loc: storage)
-	return checkpoint
+	try:
+		if device == 'cuda':
+			checkpoint = torch.load(checkpoint_path)
+		else:
+			checkpoint = torch.load(checkpoint_path, map_location='cpu')
+		return checkpoint
+	except Exception as e:
+		print(f"Standard torch.load failed with error: {e}\nTrying torch.jit.load...")
+		import io
+		with open(checkpoint_path, 'rb') as f:
+			buffer = io.BytesIO(f.read())
+		if device == 'cuda':
+			model = torch.jit.load(buffer)
+		else:
+			model = torch.jit.load(buffer, map_location='cpu')
+		return {'state_dict': model.state_dict()}  # mimic expected output
 
 def load_model(path):
 	model = Wav2Lip()
@@ -274,7 +284,10 @@ def main():
 	out.release()
 
 	command = 'ffmpeg -y -i {} -i {} -strict -2 -q:v 1 {}'.format(args.audio, 'temp/result.avi', args.outfile)
-	subprocess.call(command, shell=platform.system() != 'Windows')
+	if platform.system() == 'Windows':
+		subprocess.call(command, shell=True)
+	else:
+		subprocess.call(command, shell=False)
 
 if __name__ == '__main__':
 	main()
