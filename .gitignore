@@ -2,6 +2,7 @@
 *.jpg
 *.mp4
 *.pth
+*.pt
 *.pyc
 __pycache__
 *.h5
